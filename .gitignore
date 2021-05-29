@@ -12,6 +12,7 @@ __*__
 
 # IDE settings
 .vscode
+.github
 
 #Pip files
 Pipfile
