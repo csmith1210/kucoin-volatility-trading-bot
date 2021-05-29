@@ -1,4 +1,5 @@
 # MAIN NET
 prod:
-  access_key: replace_me
-  secret_key: replace_me
+  key: replace_me
+  secret: replace_me
+  passphrase: replace_me

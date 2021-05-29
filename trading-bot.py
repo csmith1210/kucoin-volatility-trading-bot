@@ -31,8 +31,7 @@ from colorama import init
 init()
 
 # needed for the binance API / websockets / Exception handling
-from binance.client import Client
-from binance.exceptions import BinanceAPIException
+from kucoin.client import Market, Trade, User
 
 # used for dates
 from datetime import date, datetime, timedelta
@@ -51,9 +50,8 @@ from helpers.parameters import (
 
 # Load creds modules
 from helpers.handle_creds import (
-    load_correct_creds
+    load_correct_creds, test_api_key
 )
-
 
 # for colourful logging to the console
 class txcolors:
@@ -68,7 +66,6 @@ class txcolors:
 # tracks profit/loss each session
 global session_profit
 session_profit = 0
-
 
 # print with timestamps
 old_out = sys.stdout
@@ -91,23 +88,23 @@ class St_ampe_dOut:
 
 sys.stdout = St_ampe_dOut()
 
-
 def get_price(add_to_historical=True):
-    '''Return the current price for all coins on binance'''
+    '''Return the current price for all coins on kucoin'''
 
     global historical_prices, hsp_head
 
     initial_price = {}
-    prices = client.get_all_tickers()
+    prices = market.get_all_tickers()['ticker']
 
     for coin in prices:
 
+        #need symbolName for Kucoin in case the symbol changes (ex. BCHSV to BSV)
         if CUSTOM_LIST:
-            if any(item + PAIR_WITH == coin['symbol'] for item in tickers) and all(item not in coin['symbol'] for item in FIATS):
-                initial_price[coin['symbol']] = { 'price': coin['price'], 'time': datetime.now()}
+            if any(item + "-" + PAIR_WITH == coin['symbolName'] for item in tickers) and all(item not in coin['symbolName'] for item in FIATS):
+                initial_price[coin['symbolName']] = { 'price': coin['last'], 'time': datetime.now()}
         else:
-            if PAIR_WITH in coin['symbol'] and all(item not in coin['symbol'] for item in FIATS):
-                initial_price[coin['symbol']] = { 'price': coin['price'], 'time': datetime.now()}
+            if PAIR_WITH in coin['symbolName'] and all(item not in coin['symbolName'] for item in FIATS):
+                initial_price[coin['symbolName']] = { 'price': coin['last'], 'time': datetime.now()}
 
     if add_to_historical:
         hsp_head += 1
@@ -118,7 +115,6 @@ def get_price(add_to_historical=True):
         historical_prices[hsp_head] = initial_price
 
     return initial_price
-
 
 def wait_for_price():
     '''calls the initial price and ensures the correct amount of time has passed
@@ -135,10 +131,10 @@ def wait_for_price():
 
     pause_bot()
 
-    if historical_prices[hsp_head]['BNB' + PAIR_WITH]['time'] > datetime.now() - timedelta(minutes=float(TIME_DIFFERENCE / RECHECK_INTERVAL)):
+    if historical_prices[hsp_head]['KCS' + "-" + PAIR_WITH]['time'] > datetime.now() - timedelta(minutes=float(TIME_DIFFERENCE / RECHECK_INTERVAL)):
 
         # sleep for exactly the amount of time required
-        time.sleep((timedelta(minutes=float(TIME_DIFFERENCE / RECHECK_INTERVAL)) - (datetime.now() - historical_prices[hsp_head]['BNB' + PAIR_WITH]['time'])).total_seconds())
+        time.sleep((timedelta(minutes=float(TIME_DIFFERENCE / RECHECK_INTERVAL)) - (datetime.now() - historical_prices[hsp_head]['KCS' + "-" + PAIR_WITH]['time'])).total_seconds())
 
     print(f'Working...Session profit:{session_profit:.2f}% Est:${(QUANTITY * session_profit)/100:.2f}')
 
@@ -193,7 +189,6 @@ def wait_for_price():
 
     return volatile_coins, len(volatile_coins), historical_prices[hsp_head]
 
-
 def external_signals():
     external_list = {}
     signals = {}
@@ -211,17 +206,15 @@ def external_signals():
 
     return external_list
 
-
 def pause_bot():
     '''Pause the script when exeternal indicators detect a bearish trend in the market'''
-    global bot_paused, session_profit
+    global bot_paused, session_profit, hsp_head
 
     # start counting for how long the bot's been paused
     start_time = time.perf_counter()
 
     while os.path.isfile("signals/paused.exc"):
 
-        pause = True
         if bot_paused == False:
             print(f'{txcolors.WARNING}Pausing buying due to change in market conditions, stop loss and take profit will continue to work...{txcolors.DEFAULT}')
             bot_paused = True
@@ -230,15 +223,16 @@ def pause_bot():
         # Sell function needs to work even while paused
         coins_sold = sell_coins()
         remove_from_portfolio(coins_sold)
+        get_price(True)
 
         # pausing here
+        if hsp_head == 1: print(f'Paused...Session profit:{session_profit:.2f}% Est:${(QUANTITY * session_profit)/100:.2f}')
         time.sleep((TIME_DIFFERENCE * 60) / RECHECK_INTERVAL)
 
     else:
         # stop counting the pause time
         stop_time = time.perf_counter()
         time_elapsed = timedelta(seconds=int(stop_time-start_time))
-        pause = False
 
         # resume the bot and ser pause_bot to False
         if  bot_paused == True:
@@ -247,7 +241,6 @@ def pause_bot():
 
     return
 
-
 def convert_volume():
     '''Converts the volume given in QUANTITY from USDT to the each coin's volume'''
 
@@ -255,14 +248,16 @@ def convert_volume():
     lot_size = {}
     volume = {}
 
+    info = market.get_symbol_list() # get master list of symbols
+
     for coin in volatile_coins:
 
         # Find the correct step size for each coin
         # max accuracy for BTC for example is 6 decimal points
         # while XRP is only 1
         try:
-            info = client.get_symbol_info(coin)
-            step_size = info['filters'][2]['stepSize']
+            coin_info = list(filter(lambda x:x["symbol"]==coin,info)) # search the master list for correct coin
+            step_size = coin_info[0]['baseIncrement']
             lot_size[coin] = step_size.index('1') - 1
 
             if lot_size[coin] < 0:
@@ -287,7 +282,6 @@ def convert_volume():
 
     return volume, last_price
 
-
 def buy():
     '''Place Buy market orders for each volatile coin found'''
     volume, last_price = convert_volume()
@@ -303,7 +297,7 @@ def buy():
                 orders[coin] = [{
                     'symbol': coin,
                     'orderId': 0,
-                    'time': datetime.now().timestamp()
+                    'createdAt': datetime.now().timestamp()
                 }]
 
                 # Log trade
@@ -314,11 +308,10 @@ def buy():
 
             # try to create a real order if the test orders did not raise an exception
             try:
-                buy_limit = client.create_order(
+                buy_limit = trader.create_market_order(
                     symbol = coin,
                     side = 'BUY',
-                    type = 'MARKET',
-                    quantity = volume[coin]
+                    size = volume[coin]
                 )
 
             # error handling here in case position cannot be placed
@@ -327,13 +320,13 @@ def buy():
 
             # run the else block if the position has been placed and return order info
             else:
-                orders[coin] = client.get_all_orders(symbol=coin, limit=1)
+                orders[coin] = trader.get_order_details(buy_limit['orderId'])
 
                 # binance sometimes returns an empty list, the code will wait here until binance returns the order
                 while orders[coin] == []:
                     print('Binance is being slow in returning the order, calling the API again...')
 
-                    orders[coin] = client.get_all_orders(symbol=coin, limit=1)
+                    orders[coin] = trader.get_order_details(buy_limit['orderId'])
                     time.sleep(1)
 
                 else:
@@ -348,7 +341,6 @@ def buy():
             print(f'Signal detected, but there is already an active trade on {coin}')
 
     return orders, last_price, volume
-
 
 def sell_coins():
     '''sell coins that have reached the STOP LOSS or TAKE PROFIT threshold'''
@@ -385,12 +377,10 @@ def sell_coins():
             try:
 
                 if not TEST_MODE:
-                    sell_coins_limit = client.create_order(
+                    sell_coins_limit = trader.create_market_order(
                         symbol = coin,
                         side = 'SELL',
-                        type = 'MARKET',
-                        quantity = coins_bought[coin]['volume']
-
+                        size = coins_bought[coin]['volume']
                     )
 
             # error handling here in case position cannot be placed
@@ -400,8 +390,11 @@ def sell_coins():
             # run the else block if coin has been sold and create a dict for each coin sold
             else:
                 coins_sold[coin] = coins_bought[coin]
-                # Log trade
 
+                # prevent system from buying this coin for the next TIME_DIFFERENCE minutes
+                volatility_cooloff[coin] = datetime.now()
+
+                # Log trade
                 if LOG_TRADES:
                     profit = ((LastPrice - BuyPrice) * coins_sold[coin]['volume'])* (1-(TRADING_FEE*2)) # adjust for trading fee here
                     write_log(f"Sell: {coins_sold[coin]['volume']} {coin} - {BuyPrice} - {LastPrice} Profit: {profit:.2f} {PriceChange-(TRADING_FEE*2):.2f}%")
@@ -412,8 +405,8 @@ def sell_coins():
         if hsp_head == 1:
             if len(coins_bought) > 0:
                 print(f'TP or SL not yet reached, not selling {coin} for now {BuyPrice} - {LastPrice} : {txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}{PriceChange-(TRADING_FEE*2):.2f}% Est:${(QUANTITY*(PriceChange-(TRADING_FEE*2)))/100:.2f}{txcolors.DEFAULT}')
-            else:
-                 print(f'Not holding any coins')
+        
+    if hsp_head == 1 and len(coins_bought) == 0: print(f'Not holding any coins')
 
     return coins_sold
 
@@ -426,7 +419,7 @@ def update_portfolio(orders, last_price, volume):
         coins_bought[coin] = {
             'symbol': orders[coin][0]['symbol'],
             'orderid': orders[coin][0]['orderId'],
-            'timestamp': orders[coin][0]['time'],
+            'timestamp': orders[coin][0]['createdAt'],
             'bought_at': last_price[coin]['price'],
             'volume': volume[coin],
             'stop_loss': -STOP_LOSS,
@@ -438,8 +431,7 @@ def update_portfolio(orders, last_price, volume):
             json.dump(coins_bought, file, indent=4)
 
         print(f'Order with id {orders[coin][0]["orderId"]} placed and saved to file')
-
-
+        
 def remove_from_portfolio(coins_sold):
     '''Remove coins sold due to SL or TP from portfolio'''
     for coin in coins_sold:
@@ -453,8 +445,6 @@ def write_log(logline):
     timestamp = datetime.now().strftime("%d/%m %H:%M:%S")
     with open(LOG_FILE,'a+') as f:
         f.write(timestamp + ' ' + logline + '\n')
-
-
 
 if __name__ == '__main__':
 
@@ -504,7 +494,7 @@ if __name__ == '__main__':
         DEBUG = True
 
     # Load creds for correct environment
-    access_key, secret_key = load_correct_creds(parsed_creds)
+    key, secret, passphrase = load_correct_creds(parsed_creds)
 
     if DEBUG:
         print(f'loaded config below\n{json.dumps(parsed_config, indent=4)}')
@@ -512,10 +502,12 @@ if __name__ == '__main__':
 
 
     # Authenticate with the client, Ensure API key is good before continuing
-    client = Client(access_key, secret_key)
-    #api_ready, msg = test_api_key(client, BinanceAPIException)
-    #if api_ready is not True:
-    #    exit(f'{txcolors.SELL_LOSS}{msg}{txcolors.DEFAULT}')
+    market = Market(url='https://api.kucoin.com')
+    trader = Trade(key, secret, passphrase, is_sandbox=False, url='')
+    client = User(key, secret, passphrase, is_sandbox=False, url='')
+    api_ready, msg = test_api_key(client)
+    if api_ready is not True:
+        exit(f'{txcolors.SELL_LOSS}{msg}{txcolors.DEFAULT}')
 
     # Use CUSTOM_LIST symbols if CUSTOM_LIST is set to True
     if CUSTOM_LIST: tickers=[line.strip() for line in open(TICKERS_LIST)]
@@ -526,7 +518,7 @@ if __name__ == '__main__':
     # path to the saved coins_bought file
     coins_bought_file_path = 'coins_bought.json'
 
-    # rolling window of prices; cyclical queue
+        # rolling window of prices; cyclical queue
     historical_prices = [None] * (TIME_DIFFERENCE * RECHECK_INTERVAL)
     hsp_head = -1
 
@@ -572,6 +564,7 @@ if __name__ == '__main__':
                 t = threading.Thread(target=mymodule[module].do_work, args=())
                 t.daemon = True
                 t.start()
+                time.sleep(2)
         else:
             print(f'No modules to load {SIGNALLING_MODULES}')
     except Exception as e:

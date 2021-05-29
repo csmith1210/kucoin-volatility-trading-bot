@@ -5,10 +5,9 @@ import os
 import sys
 # used for directory handling
 import glob
-
 import time
 
-MY_EXCHANGE = 'BINANCE'
+MY_EXCHANGE = 'KUCOIN'
 MY_SCREENER = 'CRYPTO'
 MY_FIRST_INTERVAL = Interval.INTERVAL_1_MINUTE
 MY_SECOND_INTERVAL = Interval.INTERVAL_5_MINUTES

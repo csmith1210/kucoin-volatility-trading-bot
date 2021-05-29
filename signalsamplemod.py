@@ -8,14 +8,14 @@ import glob
 
 import time
 
-MY_EXCHANGE = 'BINANCE'
+MY_EXCHANGE = 'KUCOIN'
 MY_SCREENER = 'CRYPTO'
 MY_FIRST_INTERVAL = Interval.INTERVAL_1_MINUTE
 MY_SECOND_INTERVAL = Interval.INTERVAL_5_MINUTES
-TA_BUY_THRESHOLD = 18 # How many of the 26 indicators to indicate a buy
+TA_BUY_THRESHOLD = 16 # How many of the 26 indicators to indicate a buy
 PAIR_WITH = 'USDT'
 TICKERS = 'signalsample.txt'
-TIME_TO_WAIT = 4 # Minutes to wait between analysis
+TIME_TO_WAIT = 3 # Minutes to wait between analysis
 FULL_LOG = False # List anylysis result to console
 
 def analyze(pairs):
@@ -72,6 +72,8 @@ def analyze(pairs):
         if first_tacheck >= TA_BUY_THRESHOLD and second_tacheck >= TA_BUY_THRESHOLD:
                 signal_coins[pair] = pair
                 print(f'Signalsample: Signal detected on {pair}')
+                idx = pair.index(PAIR_WITH)
+                pair = pair[:idx] + "-" + pair[idx:] #a little mojo to help Kucoin know what's up
                 with open('signals/signalsample.exs','a+') as f:
                     f.write(pair + '\n')
     print(f'Signalsample: Max signal by {taMaxCoin} at {taMax} on shortest timeframe') 
@@ -90,8 +92,8 @@ def do_work():
         print(f'Signalsample: Analyzing {len(pairs)} coins')
         signal_coins = analyze(pairs)
         if len(signal_coins) == 0:
-            print(f'Signalsample: No coins above {TA_BUY_THRESHOLD} threshold on both timeframes')
+            print(f'Signalsample: No coins above {TA_BUY_THRESHOLD} threshold on both timeframes. Waiting {TIME_TO_WAIT} minutes for next analysis')
         else:
-            print(f'Signalsample: {len(signal_coins)} coins above {TA_BUY_THRESHOLD} treshold on both timeframes')
-        print(f'Signalsample: Waiting {TIME_TO_WAIT} minutes for next analysis')
+            print(f'Signalsample: {len(signal_coins)} coins above {TA_BUY_THRESHOLD} treshold on both timeframes. Waiting {TIME_TO_WAIT} minutes for next analysis')
+
         time.sleep((TIME_TO_WAIT*60))

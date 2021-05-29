@@ -12,16 +12,16 @@ trading_options:
   # select what to pair the coins to and pull all coins paied with PAIR_WITH
   PAIR_WITH: USDT
 
-  # Total ammount per trade
+  # Total ammount per trade (e.g. in USDT)
   QUANTITY: 15
 
   # List of pairs to exlcude
   # by default we're excluding the most popular fiat pairs
   FIATS:
-    - EURUSDT
-    - GBPUSDT
-    - JPYUSDT
-    - USDUSDT
+    - EUR-USDT
+    - GBP-USDT
+    - JPY-USDT
+    - USD-USDT
     - DOWN
     - UP
 
@@ -29,22 +29,22 @@ trading_options:
   MAX_COINS: 7
 
   # the amount of time in MINUTES to calculate the difference from the current price
-  TIME_DIFFERENCE: 2
+  TIME_DIFFERENCE: 3
 
   # Numer of times to check for TP/SL during each TIME_DIFFERENCE Minimum 1
   RECHECK_INTERVAL: 10
 
   # the difference in % between the first and second checks for the price.
-  CHANGE_IN_PRICE: 10
+  CHANGE_IN_PRICE: 2
 
   # define in % when to sell a coin that's not making a profit
-  STOP_LOSS: 5
+  STOP_LOSS: 1.5
 
   # define in % when to take profit on a profitable coin
-  TAKE_PROFIT: .8
+  TAKE_PROFIT: 1.0
 
   # Use custom tickers.txt list for filtering pairs
-  CUSTOM_LIST: True
+  CUSTOM_LIST: False
    
   # Name of custom tickers list
   TICKERS_LIST: 'tickers.txt'
@@ -54,11 +54,11 @@ trading_options:
 
   # when hit TAKE_PROFIT, move STOP_LOSS to TRAILING_STOP_LOSS percentage points below TAKE_PROFIT hence locking in profit
   # when hit TAKE_PROFIT, move TAKE_PROFIT up by TRAILING_TAKE_PROFIT percentage points
-  TRAILING_STOP_LOSS: .4
-  TRAILING_TAKE_PROFIT: .1
+  TRAILING_STOP_LOSS: .5
+  TRAILING_TAKE_PROFIT: .2
   
   # Trading fee in % per trade.
-  TRADING_FEE: .075
+  TRADING_FEE: .08
   
   SIGNALLING_MODULES:
     - pausebotmod

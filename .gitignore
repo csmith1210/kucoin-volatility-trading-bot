@@ -1,5 +1,6 @@
 creds.yml
 trades.txt
+*.exc
 
 __*__
 
@@ -11,3 +12,7 @@ __*__
 
 # IDE settings
 .vscode
+
+#Pip files
+Pipfile
+Pipfile.lock
