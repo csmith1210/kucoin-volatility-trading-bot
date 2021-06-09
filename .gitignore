@@ -1,6 +1,7 @@
 creds.yml
 trades.txt
 *.exc
+*.exs
 
 __*__
 
