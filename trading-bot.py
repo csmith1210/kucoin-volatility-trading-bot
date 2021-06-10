@@ -184,7 +184,7 @@ def wait_for_price():
             if datetime.now() >= volatility_cooloff[coin] + timedelta(minutes=TIME_DIFFERENCE):
                 volatility_cooloff[coin] = datetime.now()
 
-                if len(coins_bought) + len(volatile_coins) < TRADE_SLOTS or TRADE_SLOTS == 0:
+                if len(coin_orders) + len(volatile_coins) < TRADE_SLOTS or TRADE_SLOTS == 0:
                     volatile_coins[coin] = round(threshold_check, 3)
                     print(f"{coin} has gained {volatile_coins[coin]}% within the last {TIME_DIFFERENCE} minutes, calculating {QUANTITY} {PAIR_WITH} value of {coin} for purchase!")
 
@@ -205,7 +205,7 @@ def wait_for_price():
     exnumber = 0
 
     for excoin in externals:
-        if excoin not in volatile_coins and excoin not in coins_bought and (len(coins_bought)+ len(volatile_coins) + exnumber) < TRADE_SLOTS:
+        if (excoin not in volatile_coins) and (not excoin == order['symbol'] for order in coin_orders) and (len(coin_orders)+ len(volatile_coins) + exnumber) < TRADE_SLOTS:
             volatile_coins[excoin] = 1
             exnumber +=1
             print(f'External signal received on {excoin}, calculating {QUANTITY} {PAIR_WITH} value of {excoin} for purchase!')
@@ -232,7 +232,7 @@ def external_signals():
 def balance_report():
     global profit_history, unrealised_percent
     INVESTMENT_TOTAL = (QUANTITY * TRADE_SLOTS)
-    CURRENT_EXPOSURE = (QUANTITY * len(coins_bought))
+    CURRENT_EXPOSURE = (QUANTITY * len(coin_orders))
     TOTAL_GAINS = ((QUANTITY * session_profit) / 100)
     NEW_BALANCE = (INVESTMENT_TOTAL + TOTAL_GAINS)
     INVESTMENT_GAIN = (TOTAL_GAINS / INVESTMENT_TOTAL) * 100
@@ -241,12 +241,12 @@ def balance_report():
     INVESTMENT_TOTAL  = round(INVESTMENT_TOTAL, decimals())
     CURRENT_EXPOSURE = round(CURRENT_EXPOSURE, decimals())
 
-    if len(coins_bought) > 0:
-        UNREALISED_PERCENT = unrealised_percent/len(coins_bought)
+    if len(coin_orders) > 0:
+        UNREALISED_PERCENT = unrealised_percent/len(coin_orders)
     else:
         UNREALISED_PERCENT = 0
 
-    print(f'Trade slots: {len(coins_bought)}/{TRADE_SLOTS} ({float(CURRENT_EXPOSURE):g}/{float(INVESTMENT_TOTAL):g}{PAIR_WITH}) | Open trades: {UNREALISED_PERCENT:.2f}% | Closed trades: {session_profit:.2f}% (all time: {PROFIT_HISTORY:.2f}%) | Session profit: {INVESTMENT_GAIN:.2f}% ({TOTAL_GAINS:.{decimals()}f}{PAIR_WITH})')
+    print(f'Trade slots: {len(coin_orders)}/{TRADE_SLOTS} ({float(CURRENT_EXPOSURE):g}/{float(INVESTMENT_TOTAL):g}{PAIR_WITH}) | Open trades: {UNREALISED_PERCENT:.2f}% | Closed trades: {session_profit:.2f}% (all time: {PROFIT_HISTORY:.2f}%) | Session profit: {INVESTMENT_GAIN:.2f}% ({TOTAL_GAINS:.{decimals()}f}{PAIR_WITH})')
     unrealised_percent_calc()
     return
 
@@ -264,8 +264,8 @@ def pause_bot():
             bot_paused = True
 
         # Sell function needs to work even while paused
-        coins_sold = sell_coins()
-        remove_from_portfolio(coins_sold)
+        sell_orders = sell_coins()
+        remove_from_portfolio(sell_orders)
         get_price(True)
 
         # pausing here
@@ -389,41 +389,42 @@ def sell_coins():
     global hsp_head, session_profit, profit_history, coin_order_id
 
     last_price = get_price(False) # don't populate rolling window
-    coins_sold = {}
+    sell_orders = {}
 
-    for coin in list(coins_bought):
+    for order, order_data in coin_orders.items():
+        symbol = order_data['symbol']
         # define stop loss and take profit
-        TP = float(coins_bought[coin]['bought_at']) + (float(coins_bought[coin]['bought_at']) * coins_bought[coin]['take_profit']) / 100
-        SL = float(coins_bought[coin]['bought_at']) + (float(coins_bought[coin]['bought_at']) * coins_bought[coin]['stop_loss']) / 100
+        TP = float(order_data['bought_at']) + (float(order_data['bought_at']) * order_data['take_profit']) / 100
+        SL = float(order_data['bought_at']) + (float(order_data['bought_at']) * order_data['stop_loss']) / 100
 
 
-        LastPrice = float(last_price[coin]['price'])
-        sellFee = (coins_bought[coin]['volume'] * LastPrice) * (TRADING_FEE/100)
-        BuyPrice = float(coins_bought[coin]['bought_at'])
-        buyFee = (coins_bought[coin]['volume'] * BuyPrice) * (TRADING_FEE/100)
+        LastPrice = float(last_price[symbol]['price'])
+        sellFee = (order_data['volume'] * LastPrice) * (TRADING_FEE/100)
+        BuyPrice = float(order_data['bought_at'])
+        buyFee = (order_data['volume'] * BuyPrice) * (TRADING_FEE/100)
         PriceChange = float((LastPrice - BuyPrice) / BuyPrice * 100)
 
         # check that the price is above the take profit and readjust SL and TP accordingly if trialing stop loss used
         if LastPrice > TP and USE_TRAILING_STOP_LOSS:
 
             # increasing TP by TRAILING_TAKE_PROFIT (essentially next time to readjust SL)
-            coins_bought[coin]['take_profit'] = PriceChange + TRAILING_TAKE_PROFIT
-            coins_bought[coin]['stop_loss'] = coins_bought[coin]['take_profit'] - TRAILING_STOP_LOSS
-            if DEBUG: print(f"{coin} TP reached, adjusting TP {coins_bought[coin]['take_profit']:.{decimals()}f}  and SL {coins_bought[coin]['stop_loss']:.{decimals()}f} accordingly to lock-in profit")
+            order_data['take_profit'] = PriceChange + TRAILING_TAKE_PROFIT
+            order_data['stop_loss'] = order_data['take_profit'] - TRAILING_STOP_LOSS
+            if DEBUG: print(f"{symbol} TP reached, adjusting TP {order_data['take_profit']:.{decimals()}f}  and SL {order_data['stop_loss']:.{decimals()}f} accordingly to lock-in profit")
             continue
 
         # check that the price is below the stop loss or above take profit (if trailing stop loss not used) and sell if this is the case
         if LastPrice < SL or LastPrice > TP and not USE_TRAILING_STOP_LOSS:
-            print(f"{txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}TP or SL reached, selling {coins_bought[coin]['volume']} {coin} - {float(BuyPrice):g} - {float(LastPrice):g} : {PriceChange-(buyFee+sellFee):.2f}% Est: {(QUANTITY*(PriceChange-(buyFee+sellFee)))/100:.{decimals()}f} {PAIR_WITH}{txcolors.DEFAULT}")
+            print(f"{txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}TP or SL reached, selling {order_data['volume']} {symbol} - {float(BuyPrice):g} - {float(LastPrice):g} : {PriceChange-(buyFee+sellFee):.2f}% Est: {(QUANTITY*(PriceChange-(buyFee+sellFee)))/100:.{decimals()}f} {PAIR_WITH}{txcolors.DEFAULT}")
 
             # try to create a real order
             try:
 
                 if not TEST_MODE:
                     sell_coins_limit = trader.create_market_order(
-                        symbol = coin,
+                        symbol = symbol,
                         side = 'SELL',
-                        size = coins_bought[coin]['volume']
+                        size = order_data['volume']
                     )
 
             # error handling here in case position cannot be placed
@@ -432,32 +433,32 @@ def sell_coins():
 
             # run the else block if coin has been sold and create a dict for each coin sold
             else:
-                coins_sold[coin] = coins_bought[coin]
+                sell_orders[order] = coin_orders[order]
                 if not TEST_MODE:
                     # update LastPrice with actual price of order that was executed
                     LastPrice = float(get_order_price(sell_coins_limit['orderId']))
-                    sellFee = (coins_bought[coin]['volume'] * LastPrice) * (TRADING_FEE/100)
+                    sellFee = (order_data['volume'] * LastPrice) * (TRADING_FEE/100)
                     PriceChange = float((LastPrice - BuyPrice) / BuyPrice * 100)
 
                 # prevent system from buying this coin for the next TIME_DIFFERENCE minutes
-                volatility_cooloff[coin] = datetime.now()
+                volatility_cooloff[symbol] = datetime.now()
 
                 # Log trade
                 if LOG_TRADES:
-                    profit = ((LastPrice - BuyPrice) * coins_sold[coin]['volume']) * (1-(buyFee + sellFee)) # adjust for trading fee here
-                    write_log(f"Sell: {coins_sold[coin]['volume']} {coin} - {BuyPrice} - {LastPrice} Profit: {profit:.{decimals()}f} {PAIR_WITH} ({PriceChange-(buyFee+sellFee):.2f}%)")
+                    profit = ((LastPrice - BuyPrice) * sell_orders[order]['volume']) * (1-(buyFee + sellFee)) # adjust for trading fee here
+                    write_log(f"Sell: {sell_orders[order]['volume']} {symbol} - {BuyPrice} - {LastPrice} Profit: {profit:.{decimals()}f} {PAIR_WITH} ({PriceChange-(buyFee+sellFee):.2f}%)")
                     session_profit = session_profit + (PriceChange-(buyFee+sellFee))
                     profit_history = profit_history + (PriceChange-(buyFee+sellFee))
             continue
 
         # no action; print once every TIME_DIFFERENCE
         if hsp_head == 1:
-            if len(coins_bought) > 0:
-                print(f'Holding {coin} - Price: {BuyPrice}, Now: {LastPrice}, P/L: {txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}{PriceChange-(buyFee+sellFee):.2f}% ({(QUANTITY*(PriceChange-(buyFee+sellFee)))/100:.{decimals()}f} {PAIR_WITH}{txcolors.DEFAULT})')
+            if len(coin_orders) > 0:
+                print(f'Holding {symbol} - Price: {BuyPrice}, Now: {LastPrice}, P/L: {txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}{PriceChange-(buyFee+sellFee):.2f}% ({(QUANTITY*(PriceChange-(buyFee+sellFee)))/100:.{decimals()}f} {PAIR_WITH}{txcolors.DEFAULT})')
         
-    if hsp_head == 1 and len(coins_bought) == 0: print(f'No trade slots are currently in use')
+    if hsp_head == 1 and len(coin_orders) == 0: print(f'No trade slots are currently in use')
 
-    return coins_sold
+    return sell_orders
     # return coin_order_id
 
 
@@ -473,7 +474,7 @@ def update_portfolio(orders, last_price, volume):
         if not TEST_MODE:
             price = get_order_price(orders[coin]['id'])
 
-        coins_bought[coin] = {
+        coin_orders[orders[coin]['id']] = {
             'symbol': orders[coin]['symbol'],
             'orderid': orders[coin]['id'],
             'timestamp': orders[coin]['createdAt'],
@@ -484,8 +485,8 @@ def update_portfolio(orders, last_price, volume):
             }
 
         # save the coins in a json file in the same directory
-        with open(coins_bought_file_path, 'w') as file:
-            json.dump(coins_bought, file, indent=4)
+        with open(coin_orders_file_path, 'w') as file:
+            json.dump(coin_orders, file, indent=4)
 
         #save session info for through session portability
         with open(profit_history_file_path, 'w') as file:
@@ -493,17 +494,16 @@ def update_portfolio(orders, last_price, volume):
 
         print(f'Order for {orders[coin]["symbol"]} with ID {orders[coin]["id"]} placed and saved to file.')
         
-def remove_from_portfolio(coins_sold):
+def remove_from_portfolio(sell_orders):
     '''Remove coins sold due to SL or TP from portfolio'''
-    for coin,data in coins_sold.items():
-        symbol = coin
+    for order,data in sell_orders.items():
         order_id = data['orderid']
-        for bought_coin, bought_coin_data in coins_bought.items():
+        for bought_coin, bought_coin_data in coin_orders.items():
             if bought_coin_data['orderid'] == order_id:
-                print(f"Sold {bought_coin}, removed order ID {order_id} from history.")
-                coins_bought.pop(bought_coin)
-                with open(coins_bought_file_path, 'w') as file:
-                    json.dump(coins_bought, file, indent=4)
+                print(f"Sold {bought_coin_data['symbol']}, removed order ID {order_id} from history.")
+                coin_orders.pop(bought_coin)
+                with open(coin_orders_file_path, 'w') as file:
+                    json.dump(coin_orders, file, indent=4)
                 break
 
 def write_log(logline):
@@ -515,14 +515,14 @@ def unrealised_percent_calc():
     global unrealised_percent_delay, unrealised_percent
     if (unrealised_percent_delay > 3):
         unrealised_percent = 0
-        for coin in list(coins_bought):
-            LastPrice = float(last_price[coin]['price'])
+        for order, order_data in coin_orders.items():
+            LastPrice = float(last_price[order_data['symbol']]['price'])
             # sell fee below would ofc only apply if transaction was closed at the current LastPrice
-            sellFee = (coins_bought[coin]['volume'] * LastPrice) * (TRADING_FEE/100)
-            BuyPrice = float(coins_bought[coin]['bought_at'])
-            buyFee = (coins_bought[coin]['volume'] * BuyPrice) * (TRADING_FEE/100)
+            sellFee = (order_data['volume'] * LastPrice) * (TRADING_FEE/100)
+            BuyPrice = float(order_data['bought_at'])
+            buyFee = (order_data['volume'] * BuyPrice) * (TRADING_FEE/100)
             PriceChange = float((LastPrice - BuyPrice) / BuyPrice * 100)
-            if len(coins_bought) > 0:
+            if len(coin_orders) > 0:
                 unrealised_percent = unrealised_percent + (PriceChange-(sellFee+buyFee))
         unrealised_percent_delay = 0
     else:
@@ -610,10 +610,10 @@ if __name__ == '__main__':
     if CUSTOM_LIST: tickers=[line.strip() for line in open(TICKERS_LIST)]
 
     # try to load all the coins bought by the bot if the file exists and is not empty
-    coins_bought = {}
+    coin_orders = {}
 
-    # path to the saved coins_bought file
-    coins_bought_file_path = 'coins_bought.json'
+    # path to the saved coin_orders file
+    coin_orders_file_path = 'coin_orders.json'
 
     # profit_history is calculated in %, apparently: "this is inaccurate if QUANTITY is not the same!"
     profit_history_file_path = 'profit_history.json'
@@ -632,12 +632,12 @@ if __name__ == '__main__':
 
     # use separate files for testing and live trading
     if TEST_MODE:
-        coins_bought_file_path = 'test_' + coins_bought_file_path
+        coin_orders_file_path = 'test_' + coin_orders_file_path
 
-    # if saved coins_bought json file exists and it's not empty then load it
-    if os.path.isfile(coins_bought_file_path) and os.stat(coins_bought_file_path).st_size!= 0:
-        with open(coins_bought_file_path) as file:
-                coins_bought = json.load(file)
+    # if saved coin_orders json file exists and it's not empty then load it
+    if os.path.isfile(coin_orders_file_path) and os.stat(coin_orders_file_path).st_size!= 0:
+        with open(coin_orders_file_path) as file:
+                coin_orders = json.load(file)
 
     print('Press Ctrl-Q to stop the script')
 
@@ -681,5 +681,5 @@ if __name__ == '__main__':
     while True:
         orders, last_price, volume = buy()
         update_portfolio(orders, last_price, volume)
-        coins_sold = sell_coins()
-        remove_from_portfolio(coins_sold)
+        sell_orders = sell_coins()
+        remove_from_portfolio(sell_orders)
