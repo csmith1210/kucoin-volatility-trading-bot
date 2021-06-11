@@ -29,10 +29,10 @@ trading_options:
   TRADE_SLOTS: 5
 
   # the amount of time in MINUTES to calculate the difference from the current price
-  TIME_DIFFERENCE: 2
+  TIME_DIFFERENCE: 1
 
   # Numer of times to check for TP/SL during each TIME_DIFFERENCE Minimum 1
-  RECHECK_INTERVAL: 20
+  RECHECK_INTERVAL: 10
 
   # the difference in % between the first and second checks for the price.
   CHANGE_IN_PRICE: 0.5

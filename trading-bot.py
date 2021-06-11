@@ -30,8 +30,9 @@ import glob
 from colorama import init
 init()
 
-# needed for the binance API / websockets / Exception handling
+# needed for the KuCoin API / websockets / Exception handling
 from kucoin.client import Market, Trade, User
+from requests.exceptions import ReadTimeout, ConnectionError
 
 # used for dates
 from datetime import date, datetime, timedelta
@@ -678,8 +679,12 @@ if __name__ == '__main__':
 
     # seed initial prices
     get_price()
+    ERROR_COUNT = 0
     while True:
-        orders, last_price, volume = buy()
-        update_portfolio(orders, last_price, volume)
-        sell_orders = sell_coins()
-        remove_from_portfolio(sell_orders)
+        try:
+            orders, last_price, volume = buy()
+            update_portfolio(orders, last_price, volume)
+            sell_orders = sell_coins()
+            remove_from_portfolio(sell_orders)
+        except (ReadTimeout, ConnectionError, ConnectionResetError) as e:
+            print(f'{txcolors.WARNING}KuCoin timeout error. Trying again. Current Count: {ERROR_COUNT}\n{e}{txcolors.DEFAULT}')
