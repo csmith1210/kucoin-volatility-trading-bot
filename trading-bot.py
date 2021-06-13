@@ -404,6 +404,8 @@ def sell_coins():
         BuyPrice = float(order_data['bought_at'])
         buyFee = (order_data['volume'] * BuyPrice) * (TRADING_FEE/100)
         PriceChange = float((LastPrice - BuyPrice) / BuyPrice * 100)
+        profit = ((LastPrice - BuyPrice) * order_data['volume']) - (buyFee+sellFee) # adjust for trading fee here
+        profit_percent = profit / (order_data['volume'] * BuyPrice) * 100
 
         # check that the price is above the take profit and readjust SL and TP accordingly if trialing stop loss used
         if LastPrice > TP and USE_TRAILING_STOP_LOSS:
@@ -416,7 +418,7 @@ def sell_coins():
 
         # check that the price is below the stop loss or above take profit (if trailing stop loss not used) and sell if this is the case
         if LastPrice < SL or LastPrice > TP and not USE_TRAILING_STOP_LOSS:
-            print(f"{txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}TP or SL reached, selling {order_data['volume']} {symbol} - {float(BuyPrice):g} - {float(LastPrice):g} : {PriceChange-(buyFee+sellFee):.2f}% Est: {(QUANTITY*(PriceChange-(buyFee+sellFee)))/100:.{decimals()}f} {PAIR_WITH}{txcolors.DEFAULT}")
+            print(f"{txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}TP or SL reached, selling {order_data['volume']} {symbol} - {float(BuyPrice):g} - {float(LastPrice):g} : {profit_percent:.2f}% Est: {profit:.{decimals()}f} {PAIR_WITH}{txcolors.DEFAULT}")
 
             # try to create a real order
             try:
@@ -446,16 +448,17 @@ def sell_coins():
 
                 # Log trade
                 if LOG_TRADES:
-                    profit = ((LastPrice - BuyPrice) * sell_orders[order]['volume']) * (1-(buyFee + sellFee)) # adjust for trading fee here
-                    write_log(f"Sell: {sell_orders[order]['volume']} {symbol} - {BuyPrice} - {LastPrice} Profit: {profit:.{decimals()}f} {PAIR_WITH} ({PriceChange-(buyFee+sellFee):.2f}%)")
-                    session_profit = session_profit + (PriceChange-(buyFee+sellFee))
-                    profit_history = profit_history + (PriceChange-(buyFee+sellFee))
+                    profit = ((LastPrice - BuyPrice) * sell_orders[order]['volume']) - (buyFee+sellFee) # adjust for trading fee here
+                    profit_percent = profit / (sell_orders[order]['volume'] * BuyPrice) * 100
+                    write_log(f"Sell: {sell_orders[order]['volume']} {symbol} - {BuyPrice} - {LastPrice} Profit: {profit:.{decimals()}f} {PAIR_WITH} ({profit_percent:.2f}%)")
+                    session_profit = session_profit + profit_percent
+                    profit_history = profit_history + profit_percent
             continue
 
         # no action; print once every TIME_DIFFERENCE
         if hsp_head == 1:
             if len(coin_orders) > 0:
-                print(f'Holding {symbol} - Price: {BuyPrice}, Now: {LastPrice}, P/L: {txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS}{PriceChange-(buyFee+sellFee):.2f}% ({(QUANTITY*(PriceChange-(buyFee+sellFee)))/100:.{decimals()}f} {PAIR_WITH}{txcolors.DEFAULT})')
+                print(f'Holding {symbol} - Price: {BuyPrice}, Now: {LastPrice}, P/L: {txcolors.SELL_PROFIT if profit_percent >= 0. else txcolors.SELL_LOSS}{profit_percent:.2f}% ({profit:.{decimals()}f} {PAIR_WITH}){txcolors.DEFAULT}')
         
     if hsp_head == 1 and len(coin_orders) == 0: print(f'No trade slots are currently in use')
 
@@ -688,3 +691,4 @@ if __name__ == '__main__':
             remove_from_portfolio(sell_orders)
         except (ReadTimeout, ConnectionError, ConnectionResetError) as e:
             print(f'{txcolors.WARNING}KuCoin timeout error. Trying again. Current Count: {ERROR_COUNT}\n{e}{txcolors.DEFAULT}')
+            time.sleep(1)
