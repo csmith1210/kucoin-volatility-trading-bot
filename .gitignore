@@ -1,5 +1,6 @@
 creds.yml
 trades.txt
+test_trades.txt
 *.exc
 *.exs
 

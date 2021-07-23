@@ -48,18 +48,33 @@ def get_order_price(orderId):
         / sum(float(fill['size']) for fill in fills), decimal_length)
     return str(weighted_avg)
 
+def get_coin_price(symbol):
+    price = market.get_ticker(symbol)['price']
+    return str(price)
+
 args = parse_args()
 
 DEFAULT_CONFIG_FILE = './config.yml'
 DEFAULT_CREDS_FILE = './creds.yml'
+ORDERS_FILE = 'coin_orders.json'
+PROFIT_HISTORY_FILE = 'profit_history.json'
 
 config_file = args.config if args.config else DEFAULT_CONFIG_FILE
 creds_file = args.creds if args.creds else DEFAULT_CREDS_FILE
 parsed_creds = load_config(creds_file)
 parsed_config = load_config(config_file)
 
+TEST_MODE = parsed_config['script_options'].get('TEST_MODE')
 LOG_TRADES = parsed_config['script_options'].get('LOG_TRADES')
 LOG_FILE = parsed_config['script_options'].get('LOG_FILE')
+
+if TEST_MODE:
+    ORDERS_FILE = 'test_' + ORDERS_FILE
+    PROFIT_HISTORY_FILE = 'test_' + PROFIT_HISTORY_FILE
+    LOG_FILE = 'test_' + LOG_FILE
+
+ORDERS_FILE_PATH = './' + ORDERS_FILE
+PROFIT_HISTORY_FILE_PATH = './' + PROFIT_HISTORY_FILE
 LOG_FILE_PATH = './' + LOG_FILE
 
 key, secret, passphrase = load_correct_creds(parsed_creds)
@@ -73,7 +88,7 @@ def write_log(logline):
     with open(LOG_FILE_PATH,'a+') as f:
         f.write(timestamp + ' ' + logline + '\n')
 
-with open('./coin_orders.json', 'r') as f:
+with open(ORDERS_FILE_PATH, 'r') as f:
     orders = json.load(f)
     total_profit = 0
     total_price_change = 0
@@ -82,14 +97,17 @@ with open('./coin_orders.json', 'r') as f:
 
         coin = orders[order]['symbol']
 
-        sell_coin = trader.create_market_order(
-            symbol = coin,
-            side = 'SELL',
-            size = orders[order]['volume']
-        )
+        if not TEST_MODE:
+            sell_coin = trader.create_market_order(
+                symbol = coin,
+                side = 'SELL',
+                size = orders[order]['volume']
+            )
+            LastPrice = float(get_order_price(sell_coin['orderId']))
+        else:
+            LastPrice = float(get_coin_price(coin))
 
         BuyPrice = float(orders[order]['bought_at'])
-        LastPrice = float(get_order_price(sell_coin['orderId']))
         profit = (LastPrice - BuyPrice) * orders[order]['volume']
         PriceChange = float((LastPrice - BuyPrice) / BuyPrice * 100)
 
@@ -108,12 +126,12 @@ with open('./coin_orders.json', 'r') as f:
     text_color = txcolors.SELL_PROFIT if total_price_change >= 0. else txcolors.SELL_LOSS
     print(f"Total Profit: {text_color}{total_profit:.2f}{txcolors.DEFAULT}. Total Price Change: {text_color}{total_price_change:.2f}%{txcolors.DEFAULT}")
 
-with open('./profit_history.json', 'r') as f:
+with open(PROFIT_HISTORY_FILE_PATH, 'r') as f:
     profit_history = json.load(f)
     
 profit_history = profit_history + total_price_change
 
-with open('./profit_history.json', 'w') as file:
+with open(PROFIT_HISTORY_FILE_PATH, 'w') as file:
     json.dump(profit_history, file, indent=4)
 
-os.remove('coin_orders.json')
+os.remove(ORDERS_FILE_PATH)
