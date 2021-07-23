@@ -73,36 +73,47 @@ def write_log(logline):
     with open(LOG_FILE_PATH,'a+') as f:
         f.write(timestamp + ' ' + logline + '\n')
 
-with open('./coins_bought.json', 'r') as f:
-    coins = json.load(f)
+with open('./coin_orders.json', 'r') as f:
+    orders = json.load(f)
     total_profit = 0
     total_price_change = 0
 
-    for coin in list(coins):
+    for order in list(orders):
+
+        coin = orders[order]['symbol']
+
         sell_coin = trader.create_market_order(
             symbol = coin,
             side = 'SELL',
-            size = coins[coin]['volume']
+            size = orders[order]['volume']
         )
 
-        BuyPrice = float(coins[coin]['bought_at'])
+        BuyPrice = float(orders[order]['bought_at'])
         LastPrice = float(get_order_price(sell_coin['orderId']))
-        profit = (LastPrice - BuyPrice) * coins[coin]['volume']
+        profit = (LastPrice - BuyPrice) * orders[order]['volume']
         PriceChange = float((LastPrice - BuyPrice) / BuyPrice * 100)
 
         total_profit += profit
         total_price_change += PriceChange
 
         text_color = txcolors.SELL_PROFIT if PriceChange >= 0. else txcolors.SELL_LOSS
-        console_log_text = f"{text_color}Sell: {coins[coin]['volume']} {coin} - {BuyPrice} - {LastPrice} Profit: {profit:.2f} {PriceChange:.2f}%{txcolors.DEFAULT}"
+        console_log_text = f"{text_color}Sell: {orders[order]['volume']} {coin} - {BuyPrice} - {LastPrice} Profit: {profit:.2f} {PriceChange:.2f}%{txcolors.DEFAULT}"
         print(console_log_text)
 
 
         if LOG_TRADES:
             timestamp = datetime.now().strftime("%d/%m %H:%M:%S")
-            write_log(f"Sell: {coins[coin]['volume']} {coin} - {BuyPrice} - {LastPrice} Profit: {profit:.2f} {PriceChange:.2f}%")
+            write_log(f"Sell: {orders[order]['volume']} {coin} - {BuyPrice} - {LastPrice} Profit: {profit:.2f} {PriceChange:.2f}%")
 
     text_color = txcolors.SELL_PROFIT if total_price_change >= 0. else txcolors.SELL_LOSS
     print(f"Total Profit: {text_color}{total_profit:.2f}{txcolors.DEFAULT}. Total Price Change: {text_color}{total_price_change:.2f}%{txcolors.DEFAULT}")
 
-os.remove('coins_bought.json')
+with open('./profit_history.json', 'r') as f:
+    profit_history = json.load(f)
+    
+profit_history = profit_history + total_price_change
+
+with open('./profit_history.json', 'w') as file:
+    json.dump(profit_history, file, indent=4)
+
+os.remove('coin_orders.json')

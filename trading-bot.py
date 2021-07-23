@@ -411,8 +411,8 @@ def sell_coins():
         if LastPrice > TP and USE_TRAILING_STOP_LOSS:
 
             # increasing TP by TRAILING_TAKE_PROFIT (essentially next time to readjust SL)
-            order_data['take_profit'] = PriceChange + TRAILING_TAKE_PROFIT
             order_data['stop_loss'] = order_data['take_profit'] - TRAILING_STOP_LOSS
+            order_data['take_profit'] = PriceChange + TRAILING_TAKE_PROFIT
             if DEBUG: print(f"{symbol} TP reached, adjusting TP {order_data['take_profit']:.{decimals()}f}  and SL {order_data['stop_loss']:.{decimals()}f} accordingly to lock-in profit")
             continue
 
@@ -618,14 +618,19 @@ if __name__ == '__main__':
 
     # path to the saved coin_orders file
     coin_orders_file_path = 'coin_orders.json'
+    profit_history_file_path = 'profit_history.json'
+
+    # use separate files for testing and live trading
+    if TEST_MODE:
+        coin_orders_file_path = 'test_' + coin_orders_file_path
+        profit_history_file_path = 'test_' + profit_history_file_path
+        LOG_FILE = 'test_' + LOG_FILE
 
     # profit_history is calculated in %, apparently: "this is inaccurate if QUANTITY is not the same!"
-    profit_history_file_path = 'profit_history.json'
     if os.path.isfile(profit_history_file_path) and os.stat(profit_history_file_path).st_size!= 0:
        json_file=open(profit_history_file_path)
        profit_history=json.load(json_file)
        json_file.close()
-
 
     # rolling window of prices; cyclical queue
     historical_prices = [None] * (TIME_DIFFERENCE * RECHECK_INTERVAL)
@@ -633,10 +638,6 @@ if __name__ == '__main__':
 
     # prevent including a coin in volatile_coins if it has already appeared there less than TIME_DIFFERENCE minutes ago
     volatility_cooloff = {}
-
-    # use separate files for testing and live trading
-    if TEST_MODE:
-        coin_orders_file_path = 'test_' + coin_orders_file_path
 
     # if saved coin_orders json file exists and it's not empty then load it
     if os.path.isfile(coin_orders_file_path) and os.stat(coin_orders_file_path).st_size!= 0:
